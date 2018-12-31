@@ -580,7 +580,7 @@ int irq_init(void)
 	if (!name)
 		panic("can not get the irqchip's name\n");
 
-	irq_chip = (struct irq_chip *)get_module_pdata(s, e, name);	
+	irq_chip = (struct irq_chip *)get_module_pdata(s, e, name);
 #else
 	irq_chip = (struct irq_chip *)get_module_pdata(s, e,
 			"brcm,bcm2836-l1-intc");
