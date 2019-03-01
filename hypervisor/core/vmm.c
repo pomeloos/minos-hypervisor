@@ -211,6 +211,11 @@ out:
 	return ret;
 }
 
+/*
+ * map VMx virtual memory to hypervisor memory
+ * space to let hypervisor can access guest vm's
+ * memory
+ */
 void *map_vm_mem(unsigned long gva, size_t size)
 {
 	unsigned long pa;
@@ -231,6 +236,10 @@ void unmap_vm_mem(unsigned long gva, size_t size)
 	destroy_host_mapping(pa, size);
 }
 
+/*
+ * map the guest vm memory space to vm0 to let vm0
+ * can access all the memory space of the guest vm
+ */
 int vm_mmap(struct vm *vm, unsigned long offset, unsigned long size)
 {
 	unsigned long vir, phy, value;
@@ -335,6 +344,7 @@ void vm_unmmap(struct vm *vm)
 	flush_local_tlb_guest();
 }
 
+/* alloc physical memory for guest vm */
 int alloc_vm_memory(struct vm *vm, unsigned long start, size_t size)
 {
 	int i, count;

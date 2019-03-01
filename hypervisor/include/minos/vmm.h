@@ -20,8 +20,19 @@ struct mm_struct {
 	unsigned long mem_base;
 	unsigned long pgd_base;
 	unsigned long hvm_mmap_base;
-	unsigned long gvm_iomem_base;
-	unsigned long gvm_iomem_size;
+
+	/*
+	 * for the shared memory of native vm
+	 * or the iomem space of guest vm
+	 */
+	union {
+		unsigned long gvm_iomem_base;
+		unsigned long shmem_base;
+	};
+	union {
+		unsigned long gvm_iomem_size;
+		unsigned long shmem_size;
+	};
 
 	/* for virtio devices */
 	unsigned long virtio_mmio_gbase;

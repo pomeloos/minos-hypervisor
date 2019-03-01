@@ -10,6 +10,7 @@ struct mailbox_vm_entry {
 	uint32_t disconnect_virq;
 	uint32_t ring_event_virq;
 	uint32_t event[MAILBOX_MAX_EVENT];
+	void *iomem;
 };
 
 /*
@@ -19,11 +20,11 @@ struct mailbox_vm_entry {
  */
 struct mailbox {
 	char name[32];
-	uint32_t cookie;
+	uint64_t cookie;
 	int vm_status[2];
 	struct vm *owner[2];
 	spinlock_t lock;
-	void *shared_memory;
+	void *shmem;
 	struct mailbox_vm_entry vm_entry[2];
 };
 

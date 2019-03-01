@@ -220,6 +220,14 @@ static int create_vm_pdev_of(struct vm *vm, struct device_node *node)
 	return ret;
 }
 
+static int create_vm_res_of(struct vm *vm, struct device_node *node)
+{
+	/*
+	 * parse the shared memory sapce and other info for
+	 * the vm
+	 */
+}
+
 static void *__create_vm_resource_of(struct device_node *node, void *arg)
 {
 	struct vm *vm = (struct vm *)arg;
@@ -231,6 +239,9 @@ static void *__create_vm_resource_of(struct device_node *node, void *arg)
 			break;
 		case DT_CLASS_VDEV:
 			create_vm_vdev_of(vm, node);
+			break;
+		case DT_CLASS_VM:
+			create_vm_res_of(vm, node);
 			break;
 		default:
 			break;
