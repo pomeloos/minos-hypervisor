@@ -232,6 +232,10 @@ void unmap_vm_mem(unsigned long gva, size_t size)
 {
 	unsigned long pa;
 
+	/* 
+	 * what will happend if this 4k mapping is used
+	 * in otherwhere
+	 */
 	pa = guest_va_to_pa(gva, 1);
 	destroy_host_mapping(pa, size);
 }

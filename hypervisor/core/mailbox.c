@@ -22,7 +22,7 @@
 #define MAX_MAILBOX_NR	20
 #define MAILBOX_MAGIC	0xabcdefeeUL
 
-typedef unsigned long (*mailbox_hvc_handler)(uint64_t arg0, uint64_t arg1);
+typedef int (*mailbox_hvc_handler)(uint64_t arg0, uint64_t arg1);
 
 static int mailbox_index = 0;
 static struct mailbox *mailboxs[MAX_MAILBOX_NR];
@@ -44,7 +44,7 @@ static void inline exract_mailbox_cookie(uint64_t cookie,
 static void mailbox_vm_init(struct mailbox *mb, int event)
 {
 	int i, j;
-	struct mailbox_vm_entry *entry;
+	struct mailbox_vm_info *entry;
 	struct vm *vm;
 
 	for (i = 0; i < 2; i++) {
@@ -52,7 +52,7 @@ static void mailbox_vm_init(struct mailbox *mb, int event)
 		 * map the shared memory for vm and allocate
 		 * the virq for the mailbox
 		 */
-		entry = &mb->vm_entry[i];
+		entry = &mb->mb_info[i];
 		vm = mb->owner[i];
 		entry->iomem = vm_map_shmem(vm,
 				mb->shmem, mb->shmem_size, VM_IO);
@@ -119,26 +119,48 @@ out:
 	return mailbox;
 }
 
-static mailbox_hvc_handlers[] = {
-	mailbox_query_instance,
-	mailbox_get_info,
-	NULL
-};
-
-static int mailbox_hvc_handler(gp_regs *c, uint32_t id, uint64_t *args)
+static int mailbox_query_instance(int index, struct mailbox_instance *instance)
 {
+	int i;
 	struct vm *vm = get_current_vm();
-	uint64_t cookie = args[0];
+	struct mailbox *mailbox;
+	struct mailbox_instance *is;
+
+	/*
+	 * the mailbox driver in native vm will query all
+	 * the mailbox instance for him and create the relate
+	 * driver the name usually represent the type of this
+	 * mailbox
+	 */
+	if (index >= MAX_MAILBOX_NR)
+		return -EINVAL;
+
+	for (i = index; i < MAX_MAILBOX_NR; i++) {
+		mailbox = mailboxs[i];
+		if ((vm == mailbox->owner[0]) ||
+				(vm == mailbox->owner[1])) {
+			is = map_vm_mem((unsigned long)instance, sizeof(*is));
+			if (!is)
+				panic("invaild vm address %p\n", instance);
+
+			is->cookie = mailbox->cookie;
+			strcpy(is->name, cookie->name);
+			is->owner_id = (vm == mailbox->owner[0] ? 0 : 1;);
+			unmap_vm_mem((unsigned long)instance, sizeof(*is));
+			return (index + 1);
+		}
+	}
+
+	return -ENOENT;
+}
+
+static struct mailbox *cookie_to_mailbox(uint64_t cookie)
+{
 	int o1, o2, index;
 	uint32_t magic;
 	struct mailbox *mailbox;
-	unsigned long ret;
+	struct vm *vm = get_current_vm();
 
-	/*
-	 * args[0] is the cookie and other is the par
-	 * args[1] is the parment0
-	 * args[2] is the parment2
-	 * */
 	exract_mailbox_cookie(cookie, &o1, &o2, &index, &magic);
 	if (unlikely((vm->vmid != o1) && (vm->vmid != o2)))
 		panic("mailbox is not belong to vm-%d\n", vm->vmid);
@@ -152,9 +174,129 @@ static int mailbox_hvc_handler(gp_regs *c, uint32_t id, uint64_t *args)
 	mailbox = mailboxs[index];
 	if (unlikey(!mailbox)) {
 		pr_error("mailbox-%d is not created\n", index);
-		HVC_RET1(c, -EINVAL);
+		return NULL;
+	}
+	
+	return mailbox;
+}
+
+static inline mailbox_owner_id(struct mailbox *mailbox, struct vm *vm)
+{
+	return (vm == mailbox->owner[0] ? 0 : 1);
+}
+
+static int mailbox_get_info(uint64_t cookie, struct mailbox_vm_info *info)
+{
+	int id;
+	struct mailbox_vm_info *inf;
+	struct vm *vm = get_current_vm();
+	struct mailbox *mailbox = cookie_to_mailbox(cookie);
+
+	if (!mailbox)
+		return -EINVAL;
+
+	inf = map_vm_mem((unsigned long)info, sizeof(*inf));
+	if (!inf)
+		return -EINVAL;
+
+	id = (vm == mailbox->owner[0] ? 0 : 1);
+	memcpy(inf, mailbox->mb_info[i]);
+
+	return 0;
+}
+
+static int mailbox_connect(uint64_t cookie)
+{
+	int id;
+	struct mailbox *mb = cookie_to_mailbox(cookie);
+	struct vm *vm = get_current_vm();
+
+	if (!mb)
+		return -EINVAL;
+
+	id = mailbox_owner_id(mb, vm);
+	if (mb->vm_status[id] == MAILBOX_STATUS_CONNECTED) {
+		pr_warn("mailbox areadly in connected state %d\n",
+				vm->vmid);
+		return -EINVAL;
 	}
 
+	spin_lock(&mb->lock);
+	mv->vm_status[id] = MAILBOX_STATUS_CONNECTED;
+	if (mb->vm_status[!id] == MAILBOX_STATUS_CONNECTED) {
+		send_virq_to_vm(mb->owner[!id],
+				mb->mb_info[!id].connect_virq);
+	}
+	spin_unlock(&mb->lock);
+
+	return 0;
+}
+
+static int mailbox_disconnect(uint64_t cookie)
+{
+	int id;
+	struct mailbox *mb = cookie_to_mailbox(cookie);
+	struct vm *vm = get_current_vm();
+
+	if (!mb)
+		return -EINVAL;
+
+	id = mailbox_owner_id(mb, vm);
+	if (mb->vm_status[id] == MAILBOX_STATUS_DISCONNECT) {
+		pr_warn("mailbox areadly in disconnected state %d\n",
+				vm->vmid);
+		return -EINVAL;
+	}
+
+	spin_lock(&mb->lock);
+	mv->vm_status[id] = MAILBOX_STATUS_DISCONNECT;
+	if (mb->vm_status[!id] == MAILBOX_STATUS_CONNECTED) {
+		send_virq_to_vm(mb->owner[!id],
+				mb->mb_info[!id].disconnect_virq);
+	}
+	spin_unlock(&mb->lock);
+
+	return 0;
+}
+
+static int mailbox_post_event(uint64_t cookie, int event_id)
+{
+	int id;
+	struct mailbox *mb = cookie_to_mailbox(cookie);
+	struct vm *vm = get_current_vm();
+	struct mailbox_vm_info *info;
+
+	if (!mb)
+		return -EINVAL;
+
+	id = mailbox_owner_id(mb, vm);
+	info = mb->mb_info[id];
+
+	if ((event_id >= MAILBOX_MAX_EVENT) ||
+			(info->event[event_id] == 0))
+		return -EINVAL;
+
+	send_virq_to_vm(vm, info->event[event_id]);
+	return 0;
+}
+
+static mailbox_hvc_handlers[] = {
+	mailbox_query_instance,
+	mailbox_get_info,
+	mailbox_connect,
+	mailbox_disconnect,
+	mailbox_post_event,
+	NULL
+};
+
+static int mailbox_hvc_handler(gp_regs *c, uint32_t id, uint64_t *args)
+{
+	int index;
+	unsigned long ret;
+
+	if (!vm_is_native(get_current_vm()))
+		panic("only native vm can call mailbox hypercall\n");
+	
 	index = id - HVC_MAILBOX_FN(0);
 	if (index >= sizeof(mailbox_hvc_handlers)) {
 		pr_error("unsupport mailbox hypercall %d\n", index);
