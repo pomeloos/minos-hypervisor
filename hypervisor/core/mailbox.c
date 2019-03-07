@@ -18,11 +18,15 @@
 #include <minos/mailbox.h>
 #include <asm/svccc.h>
 #include <minos/hypercall.h>
+#include <minos/vmm.h>
+#include <minos/vm.h>
+#include <minos/sched.h>
+#include <minos/virq.h>
 
-#define MAX_MAILBOX_NR	20
+#define MAX_MAILBOX_NR	CONFIG_MAX_MAILBOX_NR
 #define MAILBOX_MAGIC	0xabcdefeeUL
 
-typedef int (*mailbox_hvc_handler)(uint64_t arg0, uint64_t arg1);
+typedef int (*mailbox_hvc_handler_t)(uint64_t arg0, uint64_t arg1);
 
 static int mailbox_index = 0;
 static struct mailbox *mailboxs[MAX_MAILBOX_NR];
@@ -44,8 +48,8 @@ static void inline exract_mailbox_cookie(uint64_t cookie,
 static void mailbox_vm_init(struct mailbox *mb, int event)
 {
 	int i, j;
-	struct mailbox_vm_info *entry;
 	struct vm *vm;
+	struct mailbox_vm_info *entry;
 
 	for (i = 0; i < 2; i++) {
 		/*
@@ -72,7 +76,7 @@ static void mailbox_vm_init(struct mailbox *mb, int event)
 	}
 }
 
-struct mailbox *create_mailbox(char *name,
+struct mailbox *create_mailbox(const char *name,
 		int o1, int o2, size_t size, int event)
 {
 	struct vm *vm1, *vm2;
@@ -98,16 +102,16 @@ struct mailbox *create_mailbox(char *name,
 	mailbox->vm_status[1] = MAILBOX_VM_DISCONNECT;
 	spin_lock_init(&mailbox->lock);
 	mailbox->cookie = generate_mailbox_cookie(o1, o2, mailbox_index);
-	mailboxs[mailbox_index] = mailbox;
-	mailbox_index++;
+	mailboxs[mailbox_index++] = mailbox;
 
-	if (unlikely(!size))
+	if (!size)
 		goto out;
 
 	/*
-	 * the current memory allocation system has a
-	 * limitation that get_io_pages can not get
-	 * memory which bigger than 2M.
+	 * the current memory allocation system has a limitation
+	 * that get_io_pages can not get memory which bigger than
+	 * 2M. if need to get memory bigger than 2M can use
+	 * alloc_mem_block and map these memory to IO memory ?
 	 */
 	size = PAGE_BALIGN(size);
 	mailbox->shmem = get_io_pages(PAGE_NR(size));
@@ -119,12 +123,13 @@ out:
 	return mailbox;
 }
 
-static int mailbox_query_instance(int index, struct mailbox_instance *instance)
+static int mailbox_query_instance(uint64_t index, uint64_t arg2)
 {
 	int i;
 	struct vm *vm = get_current_vm();
 	struct mailbox *mailbox;
 	struct mailbox_instance *is;
+	struct mailbox_instance *instance = (struct mailbox_instance *)arg2;
 
 	/*
 	 * the mailbox driver in native vm will query all
@@ -162,17 +167,17 @@ static struct mailbox *cookie_to_mailbox(uint64_t cookie)
 	struct vm *vm = get_current_vm();
 
 	exract_mailbox_cookie(cookie, &o1, &o2, &index, &magic);
-	if (unlikely((vm->vmid != o1) && (vm->vmid != o2)))
+	if (u(vm->vmid != o1) && (vm->vmid != o2))
 		panic("mailbox is not belong to vm-%d\n", vm->vmid);
 
-	if (unlikely(magic != MAILBOX_MAGIC))
+	if (magic != MAILBOX_MAGIC)
 		panic("invalid mailbox\n");
 
-	if (unlikey(index >= MAX_MAILBOX_NR))
+	if (index >= MAX_MAILBOX_NR)
 		panic("invalid mailbox index\n");
 
 	mailbox = mailboxs[index];
-	if (unlikey(!mailbox)) {
+	if (!mailbox) {
 		pr_error("mailbox-%d is not created\n", index);
 		return NULL;
 	}
@@ -185,12 +190,13 @@ static inline mailbox_owner_id(struct mailbox *mailbox, struct vm *vm)
 	return (vm == mailbox->owner[0] ? 0 : 1);
 }
 
-static int mailbox_get_info(uint64_t cookie, struct mailbox_vm_info *info)
+static int mailbox_get_info(uint64_t cookie, uint64_t arg2)
 {
 	int id;
 	struct mailbox_vm_info *inf;
 	struct vm *vm = get_current_vm();
 	struct mailbox *mailbox = cookie_to_mailbox(cookie);
+	struct mailbox_vm_info *info = (struct mailbox_vm_info *)arg2;
 
 	if (!mailbox)
 		return -EINVAL;
@@ -200,12 +206,13 @@ static int mailbox_get_info(uint64_t cookie, struct mailbox_vm_info *info)
 		return -EINVAL;
 
 	id = (vm == mailbox->owner[0] ? 0 : 1);
-	memcpy(inf, mailbox->mb_info[i]);
+	memcpy(inf, mailbox->mb_info[id], sizeof(*info));
+	unmap_vm_mem((unsigned long)info, sizeof(*inf));
 
 	return 0;
 }
 
-static int mailbox_connect(uint64_t cookie)
+static int mailbox_connect(uint64_t cookie, uint64_t noused)
 {
 	int id;
 	struct mailbox *mb = cookie_to_mailbox(cookie);
@@ -222,7 +229,7 @@ static int mailbox_connect(uint64_t cookie)
 	}
 
 	spin_lock(&mb->lock);
-	mv->vm_status[id] = MAILBOX_STATUS_CONNECTED;
+	mb->vm_status[id] = MAILBOX_STATUS_CONNECTED;
 	if (mb->vm_status[!id] == MAILBOX_STATUS_CONNECTED) {
 		send_virq_to_vm(mb->owner[!id],
 				mb->mb_info[!id].connect_virq);
@@ -232,7 +239,7 @@ static int mailbox_connect(uint64_t cookie)
 	return 0;
 }
 
-static int mailbox_disconnect(uint64_t cookie)
+static int mailbox_disconnect(uint64_t cookie, uint64_t noused)
 {
 	int id;
 	struct mailbox *mb = cookie_to_mailbox(cookie);
@@ -249,7 +256,7 @@ static int mailbox_disconnect(uint64_t cookie)
 	}
 
 	spin_lock(&mb->lock);
-	mv->vm_status[id] = MAILBOX_STATUS_DISCONNECT;
+	mb->vm_status[id] = MAILBOX_STATUS_DISCONNECT;
 	if (mb->vm_status[!id] == MAILBOX_STATUS_CONNECTED) {
 		send_virq_to_vm(mb->owner[!id],
 				mb->mb_info[!id].disconnect_virq);
@@ -259,7 +266,7 @@ static int mailbox_disconnect(uint64_t cookie)
 	return 0;
 }
 
-static int mailbox_post_event(uint64_t cookie, int event_id)
+static int mailbox_post_event(uint64_t cookie, uint64_t event_id)
 {
 	int id;
 	struct mailbox *mb = cookie_to_mailbox(cookie);
@@ -270,7 +277,7 @@ static int mailbox_post_event(uint64_t cookie, int event_id)
 		return -EINVAL;
 
 	id = mailbox_owner_id(mb, vm);
-	info = mb->mb_info[id];
+	info = &mb->mb_info[id];
 
 	if ((event_id >= MAILBOX_MAX_EVENT) ||
 			(info->event[event_id] == 0))
@@ -280,7 +287,7 @@ static int mailbox_post_event(uint64_t cookie, int event_id)
 	return 0;
 }
 
-static mailbox_hvc_handlers[] = {
+static mailbox_hvc_handler_t mailbox_hvc_handlers[] = {
 	mailbox_query_instance,
 	mailbox_get_info,
 	mailbox_connect,
@@ -293,6 +300,7 @@ static int mailbox_hvc_handler(gp_regs *c, uint32_t id, uint64_t *args)
 {
 	int index;
 	unsigned long ret;
+	mailbox_hvc_handler_t handler;
 
 	if (!vm_is_native(get_current_vm()))
 		panic("only native vm can call mailbox hypercall\n");
@@ -303,7 +311,8 @@ static int mailbox_hvc_handler(gp_regs *c, uint32_t id, uint64_t *args)
 		HVC_RET1(c, -EINVAL)
 	}
 
-	ret = mailbox_hvc_handlers[index](args[1], args[2]);
+	handler = mailbox_hvc_handlers[index];
+	handler(args[1], args[2]);
 	HVC_RET1(c, ret);
 }
 

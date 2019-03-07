@@ -450,6 +450,43 @@ void vm_mm_struct_init(struct vm *vm)
 	}
 }
 
+void vm_init_shmem(struct vm *vm, uint64_t base, uint64_t size)
+{
+	struct mm_struct *mm = &vm->mm;
+
+	if (!vm_is_native(vm)) {
+		pr_error("vm is not native vm can not init shmem\n");
+		return;
+	}
+
+	pr_info("find shmem info for vm-%d 0x%x 0x%x\n",
+			vm_id(vm), base, size);
+	mm->shmem_base = base;
+	mm->shmem_size = size;
+}
+
+void *vm_map_shmem(struct vm *vm, void *phy, uint32_t size,
+		unsigned long flags)
+{
+	int ret;
+	void *base;
+	struct mm_struct *mm = &vm->mm;
+
+	if (mm->shmem_size < size)
+		return NULL;
+
+	ret = create_guest_mapping(vm, (vir_addr_t)mm->shmem_base,
+			(phy_addr_t)phy, size, flags);
+	if (ret)
+		return NULL;
+
+	base = mm->shmem_base;
+	mm->shmem_base += size;
+	mm->shmem_size -= size;
+
+	return base;
+}
+
 int vm_mm_init(struct vm *vm)
 {
 	struct memory_region *region;

@@ -15,6 +15,9 @@ typedef void * (*of_iterate_fn)(struct device_node *, void *arg);
 
 extern struct device_node *hv_node;
 
+#define of_node_for_each_child(node, child)	\
+	for (child = node->child; child != NULL; child = child->sibling)
+
 static fdt32_t inline cpu_to_of32(uint32_t v)
 {
 	return cpu_to_fdt32(v);
