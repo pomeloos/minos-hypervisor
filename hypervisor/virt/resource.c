@@ -297,6 +297,7 @@ int create_vm_resource_of(struct vm *vm, void *data)
 		node = hv_node;
 	else
 		node = of_parse_device_tree(data);
+
 	if (!node) {
 		pr_error("invaild setup data for vm-%d\n", vm->vmid);
 		return -EINVAL;
@@ -319,7 +320,7 @@ int create_vm_resource_of(struct vm *vm, void *data)
 	of_release_all_node(node);
 	if (vm_is_hvm(vm))
 		hv_node = NULL;
-
+	
 	return 0;
 }
 

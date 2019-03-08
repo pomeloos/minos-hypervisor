@@ -541,8 +541,8 @@ static int __fdt_parse_vm_info(int node, struct vmtag *vmtags)
 				(uint64_t *)&tag->entry, 1);
 		__of_get_u32_array(dtb, child, "vcpu_affinity",
 				tag->vcpu_affinity, tag->nr_vcpu);
-		__of_get_u32_array(dtb, child, "setup_data",
-				(uint32_t *)&tag->setup_data, 1);
+		__of_get_u64_array(dtb, child, "setup_data",
+				(uint64_t *)&tag->setup_data, 1);
 		__of_get_u64_array(dtb, child, "memory", array, 2);
 		tag->mem_base = array[0];
 		tag->mem_size = array[1];

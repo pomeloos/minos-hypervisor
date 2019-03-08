@@ -403,11 +403,34 @@ int vm_suspend(int vmid)
 
 void set_vmtags_to(struct vmtag *tags, int count)
 {
+	int i;
+	struct vmtag *tag;
+
 	if (!tags || (count == 0))
 		panic("incorrect vmtags or count %d\n", count);
 
 	vmtags = tags;
 	nr_static_vms = count;
+
+	/* dump the static vm information */
+	pr_info("#### find %d virtual machines ####\n", count);
+	for (i = 0; i < count; i++) {
+		tag = &tags[i];
+		pr_info("  vm-%d :\n", tag->vmid);
+		pr_info("    name     : %s\n", tag->name);
+		pr_info("    os_type  : %s\n", tag->os_type);
+		pr_info("    nr_vcpus : %d\n", tag->nr_vcpu);
+		pr_info("    mem_base : 0x%p\n", tag->mem_base);
+		pr_info("    mem_size : 0x%x\n", tag->mem_size);
+		pr_info("    entry    : 0x%p\n", tag->entry);
+		pr_info("    setup    : 0x%p\n", tag->setup_data);
+		pr_info("    affinity : %d %d %d %d %d %d %d %d\n",
+				tag->vcpu_affinity[0], tag->vcpu_affinity[1],
+				tag->vcpu_affinity[2], tag->vcpu_affinity[3],
+				tag->vcpu_affinity[4], tag->vcpu_affinity[5],
+				tag->vcpu_affinity[6], tag->vcpu_affinity[7]);
+		pr_info("\n");
+	}
 }
 
 int vm_create_host_vdev(struct vm *vm)
@@ -437,10 +460,25 @@ out:
 
 static int vm_create_resource(struct vm *vm)
 {
+	void *data = vm->setup_data;
+
+	/* 
+	 * if the vm is native but not hvm, then need to mapping
+	 * the setup memory to host memory space
+	 */
+	if (vm_is_native(vm) && !vm_is_hvm(vm)) {
+		if (create_host_mapping((phy_addr_t)data,
+				(vir_addr_t)data, SIZE_2M, 0))
+			return -EFAULT;
+	}
+
 	if (of_data(vm->setup_data)) {
 		vm->flags |= VM_FLAGS_SETUP_OF;
 		return create_vm_resource_of(vm, vm->setup_data);
 	}
+
+	if(vm_is_native(vm) && !vm_is_hvm(vm))
+		destroy_host_mapping((vir_addr_t)data, SIZE_2M);
 
 	return -EINVAL;
 }

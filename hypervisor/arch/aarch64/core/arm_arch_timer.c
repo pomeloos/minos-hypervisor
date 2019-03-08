@@ -133,8 +133,8 @@ static int timers_arch_init(void)
 			return -ENOENT;
 		}
 
-		pr_info("%s : irq-%d flags-0x%x\n", timer_name[i],
-				info->irq, info->flags);
+		pr_info("irq-%d flags-0x%x -> [%s]\n", info->irq,
+				info->flags, timer_name[i]);
 	}
 
 	ret = of_get_u32_array(node, "clock-frequency", &cpu_khz, 1);

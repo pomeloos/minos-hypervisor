@@ -139,7 +139,8 @@ int __of_get_u16_array(void *dtb, int node, char *attr,
 		return -EINVAL;
 
 	if ((length % sizeof(uint16_t)) != 0) {
-		pr_error("node is not a u32 array %d\n", length);
+		pr_error("node [%s]-[%s] is not a u16 array %d\n", attr,
+				fdt_get_name(dtb, node, NULL), length);
 		return -EINVAL;
 	}
 
@@ -164,7 +165,8 @@ int __of_get_u32_array(void *dtb, int node, char *attr,
 		return -EINVAL;
 
 	if ((length % sizeof(fdt32_t)) != 0) {
-		pr_error("node is not a u32 array %d\n", length);
+		pr_error("node [%s]-[%s] is not a u32 array %d\n", attr,
+				fdt_get_name(dtb, node, NULL), length);
 		return -EINVAL;
 	}
 
@@ -191,7 +193,8 @@ int __of_get_u64_array(void *dtb, int node, char *attr,
 	}
 
 	if ((length % sizeof(fdt64_t)) != 0) {
-		pr_error("node is not a u64 array %d\n", length);
+		pr_error("node [%s]-[%s] is not a u64 array %d\n", attr,
+				fdt_get_name(dtb, node, NULL), length);
 		return -EINVAL;
 	}
 

@@ -480,7 +480,7 @@ void *vm_map_shmem(struct vm *vm, void *phy, uint32_t size,
 	if (ret)
 		return NULL;
 
-	base = mm->shmem_base;
+	base = (void *)mm->shmem_base;
 	mm->shmem_base += size;
 	mm->shmem_size -= size;
 
