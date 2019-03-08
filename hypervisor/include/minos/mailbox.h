@@ -35,8 +35,11 @@ struct mailbox {
 	struct vm *owner[2];
 	spinlock_t lock;
 	void *shmem;
-	size_t iomem_size;
+	size_t shmem_size;
 	struct mailbox_vm_info mb_info[2];
 };
+
+struct mailbox *create_mailbox(const char *name,
+		int o1, int o2, size_t size, int event);
 
 #endif

@@ -23,6 +23,7 @@
 #include <minos/mm.h>
 #include <minos/vmm.h>
 #include <minos/irq.h>
+#include <minos/mailbox.h>
 
 static void *virqchip_start;
 static void *virqchip_end;
@@ -266,12 +267,12 @@ static int of_create_vm_mailbox(struct device_node *node)
 	struct device_node *mailboxes;
 	struct device_node *child;
 
-	vms = of_find_node_by_name(node, "vm_mailboxes");
+	mailboxes = of_find_node_by_name(node, "vm_mailboxes");
 	if (!mailboxes)
 		return -ENOENT;
 
 	/* parse each mailbox entry and create it */
-	of_node_for_each_children(mailboxes, child) {
+	of_node_for_each_child(mailboxes, child) {
 		of_get_u32_array(child, "owner", (uint32_t *)owner, 2);
 		of_get_u32_array(child, "shmem_size", &size, 1);
 		of_get_u32_array(child, "event_size", &event, 1);

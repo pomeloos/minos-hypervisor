@@ -74,6 +74,9 @@ void of_release_all_node(struct device_node *node);
 void *of_device_node_match(struct device_node *node, void *s, void *e);
 int of_get_phandle(struct device_node *node);
 
+struct device_node *
+of_find_node_by_name(struct device_node *root, char *name);
+
 static inline int of_get_u64_array(struct device_node *node,
 		char *attr, uint64_t *array, int len)
 {
