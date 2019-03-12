@@ -31,7 +31,7 @@ typedef int (*mailbox_hvc_handler_t)(uint64_t arg0, uint64_t arg1);
 static int mailbox_index = 0;
 static struct mailbox *mailboxs[MAX_MAILBOX_NR];
 
-static uint32_t inline generate_mailbox_cookie(int o1, int o2, int index)
+static uint64_t inline generate_mailbox_cookie(int o1, int o2, int index)
 {
 	return (MAILBOX_MAGIC << 32) | (o1 << 16) | (o2 << 8) | index;
 }
