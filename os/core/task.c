@@ -237,7 +237,7 @@ static struct task *__create_task(char *name, task_func_t func,
 	task_init(task, name, stack, arg, prio,
 			pid, aff, stk_size, opt);
 	task_vmodules_init(task);
-	
+
 	return task;
 }
 
